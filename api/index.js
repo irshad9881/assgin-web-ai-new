@@ -12,6 +12,68 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB
 });
 
+// Simple search function
+const searchDocuments = async ({ query, category, team, project }) => {
+  const filter = {};
+  
+  if (category && category !== '') filter.category = category;
+  if (team && team !== '') filter.team = team;
+  if (project && project !== '') filter.project = project;
+  
+  let documents;
+  if (query && query.trim() !== '') {
+    documents = await Document.find({
+      ...filter,
+      $or: [
+        { title: { $regex: query, $options: 'i' } },
+        { content: { $regex: query, $options: 'i' } },
+        { tags: { $in: [new RegExp(query, 'i')] } }
+      ]
+    }).sort({ createdAt: -1 }).limit(20);
+  } else {
+    documents = await Document.find(filter).sort({ createdAt: -1 }).limit(20);
+  }
+  
+  return {
+    query: query || '',
+    results: documents.map(doc => ({
+      id: doc._id,
+      title: doc.title,
+      category: doc.category,
+      team: doc.team,
+      project: doc.project,
+      tags: doc.tags || [],
+      similarity: 0.85,
+      matchType: 'text',
+      preview: doc.content ? doc.content.substring(0, 200) + '...' : 'No preview available',
+      createdAt: doc.createdAt
+    })),
+    total: documents.length
+  };
+};
+
+// Simple categorization function
+const categorizeDocument = async (content, filename) => {
+  const text = (content + ' ' + filename).toLowerCase();
+  
+  if (text.includes('campaign') || text.includes('marketing')) return 'campaign';
+  if (text.includes('brand') || text.includes('logo')) return 'brand';
+  if (text.includes('social') || text.includes('facebook') || text.includes('twitter')) return 'social-media';
+  if (text.includes('email') || text.includes('newsletter')) return 'email';
+  if (text.includes('content') || text.includes('blog')) return 'content';
+  if (text.includes('analytics') || text.includes('report')) return 'analytics';
+  if (text.includes('strategy') || text.includes('plan')) return 'strategy';
+  
+  return 'creative';
+};
+
+// Simple document processor
+const processDocument = async (file) => {
+  // For now, return filename as content
+  // In production, you'd use pdf-parse, mammoth, etc.
+  return `Document: ${file.originalname}\nSize: ${file.size} bytes\nType: ${file.mimetype}`;
+};
+
 // Connect to MongoDB
 let isConnected = false;
 const connectDB = async () => {
@@ -64,7 +126,7 @@ module.exports = async (req, res) => {
     // Upload endpoint
     if (url === '/api/documents/upload' && method === 'POST') {
       return new Promise((resolve) => {
-        upload.single('file')(req, res, async (err) => {
+        upload.single('document')(req, res, async (err) => {
           if (err) {
             return res.status(400).json({ error: 'File upload error', message: err.message });
           }
@@ -81,7 +143,7 @@ module.exports = async (req, res) => {
             const content = await processDocument(file);
             
             // AI categorization
-            const aiCategory = category || await categorizeDocument(content, file.originalname);
+            const aiCategory = category || categorizeDocument(content, file.originalname);
             
             // Create document
             const document = new Document({
