@@ -363,7 +363,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🎉 **Demo**
 
-**Live Demo**: [https://marketing-search-tool.vercel.app](https://your-app.vercel.app)
+**Live Demo**: [https://marketing-search-tool.vercel.app/](https://marketing-search-tool.vercel.app/)
 
 **Features Showcase**:
 - Upload marketing documents
