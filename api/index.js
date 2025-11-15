@@ -55,9 +55,12 @@ const searchDocuments = async ({ query, category, team, project }) => {
   try {
     const filter = {};
     
-    if (category && category !== '') filter.category = category;
-    if (team && team !== '') filter.team = team;
-    if (project && project !== '') filter.project = project;
+    if (category && category !== '' && category !== 'undefined') filter.category = category;
+    if (team && team !== '' && team !== 'undefined') filter.team = team;
+    if (project && project !== '' && project !== 'undefined') filter.project = project;
+    
+    console.log('Search filter:', filter);
+    console.log('Search query:', query);
     
     let documents;
     if (query && query.trim() !== '') {
@@ -71,6 +74,8 @@ const searchDocuments = async ({ query, category, team, project }) => {
     } else {
       documents = await Document.find(filter).sort({ createdAt: -1 }).limit(20);
     }
+    
+    console.log('Found documents:', documents.length);
     
     return {
       query: query || '',
@@ -89,24 +94,12 @@ const searchDocuments = async ({ query, category, team, project }) => {
       total: documents.length
     };
   } catch (error) {
-    // Return demo data if DB fails
+    console.error('Search error:', error);
+    // Return empty results if DB fails
     return {
       query: query || '',
-      results: [
-        {
-          id: 'demo-1',
-          title: 'Marketing Strategy.pdf',
-          category: 'campaign',
-          team: 'marketing',
-          project: 'brand-refresh',
-          tags: ['strategy', 'marketing'],
-          similarity: 0.95,
-          matchType: 'semantic',
-          preview: 'Marketing strategy document...',
-          createdAt: new Date().toISOString()
-        }
-      ],
-      total: 1
+      results: [],
+      total: 0
     };
   }
 };
@@ -139,12 +132,17 @@ module.exports = async (req, res) => {
         const teams = await Document.distinct('team');
         const projects = await Document.distinct('project');
         
+        console.log('DB Categories:', categories);
+        console.log('DB Teams:', teams);
+        console.log('DB Projects:', projects);
+        
         return res.json({
           categories: categories.length ? categories : ['campaign', 'brand', 'social-media', 'email', 'content', 'analytics', 'strategy', 'creative'],
           teams: teams.length ? teams : ['marketing', 'creative', 'content', 'analytics', 'social'],
           projects: projects.length ? projects : ['brand-refresh', 'q1-campaign', 'product-launch', 'holiday-promo']
         });
       } catch (error) {
+        console.error('Categories error:', error);
         return res.json({
           categories: ['campaign', 'brand', 'social-media', 'email', 'content', 'analytics', 'strategy', 'creative'],
           teams: ['marketing', 'creative', 'content', 'analytics', 'social'],
