@@ -136,17 +136,76 @@ module.exports = async (req, res) => {
         console.log('DB Teams:', teams);
         console.log('DB Projects:', projects);
         
+        // Format data for frontend
+        const formatWithCounts = async (items, field) => {
+          const counts = await Document.aggregate([
+            { $group: { _id: `$${field}`, count: { $sum: 1 } } }
+          ]);
+          
+          return items.map(item => {
+            const countObj = counts.find(c => c._id === item);
+            return {
+              name: item,
+              count: countObj ? countObj.count : 0
+            };
+          });
+        };
+        
+        const categoriesWithCounts = await formatWithCounts(categories, 'category');
+        const teamsWithCounts = await formatWithCounts(teams, 'team');
+        const projectsWithCounts = await formatWithCounts(projects, 'project');
+        
         return res.json({
-          categories: categories.length ? categories : ['campaign', 'brand', 'social-media', 'email', 'content', 'analytics', 'strategy', 'creative'],
-          teams: teams.length ? teams : ['marketing', 'creative', 'content', 'analytics', 'social'],
-          projects: projects.length ? projects : ['brand-refresh', 'q1-campaign', 'product-launch', 'holiday-promo']
+          categories: categoriesWithCounts.length ? categoriesWithCounts : [
+            { name: 'campaign', count: 0 },
+            { name: 'brand', count: 0 },
+            { name: 'social-media', count: 0 },
+            { name: 'email', count: 0 },
+            { name: 'content', count: 0 },
+            { name: 'analytics', count: 0 },
+            { name: 'strategy', count: 0 },
+            { name: 'creative', count: 0 }
+          ],
+          teams: teamsWithCounts.length ? teamsWithCounts : [
+            { name: 'marketing', count: 0 },
+            { name: 'creative', count: 0 },
+            { name: 'content', count: 0 },
+            { name: 'analytics', count: 0 },
+            { name: 'social', count: 0 }
+          ],
+          projects: projectsWithCounts.length ? projectsWithCounts : [
+            { name: 'brand-refresh', count: 0 },
+            { name: 'q1-campaign', count: 0 },
+            { name: 'product-launch', count: 0 },
+            { name: 'holiday-promo', count: 0 }
+          ]
         });
       } catch (error) {
         console.error('Categories error:', error);
         return res.json({
-          categories: ['campaign', 'brand', 'social-media', 'email', 'content', 'analytics', 'strategy', 'creative'],
-          teams: ['marketing', 'creative', 'content', 'analytics', 'social'],
-          projects: ['brand-refresh', 'q1-campaign', 'product-launch', 'holiday-promo']
+          categories: [
+            { name: 'campaign', count: 0 },
+            { name: 'brand', count: 0 },
+            { name: 'social-media', count: 0 },
+            { name: 'email', count: 0 },
+            { name: 'content', count: 0 },
+            { name: 'analytics', count: 0 },
+            { name: 'strategy', count: 0 },
+            { name: 'creative', count: 0 }
+          ],
+          teams: [
+            { name: 'marketing', count: 0 },
+            { name: 'creative', count: 0 },
+            { name: 'content', count: 0 },
+            { name: 'analytics', count: 0 },
+            { name: 'social', count: 0 }
+          ],
+          projects: [
+            { name: 'brand-refresh', count: 0 },
+            { name: 'q1-campaign', count: 0 },
+            { name: 'product-launch', count: 0 },
+            { name: 'holiday-promo', count: 0 }
+          ]
         });
       }
     }
