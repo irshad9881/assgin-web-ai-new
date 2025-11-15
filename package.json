@@ -1,0 +1,11 @@
+{
+  "name": "marketing-search-tool",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "start": "cd backend && npm start"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
