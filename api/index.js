@@ -67,8 +67,32 @@ module.exports = async (req, res) => {
       });
     }
     
+    // Document details endpoint
+    if (url.match(/\/api\/documents\/[^/]+$/) && method === 'GET') {
+      const docId = url.split('/').pop();
+      return res.json({
+        id: docId,
+        title: 'Demo Document.pdf',
+        category: 'campaign',
+        team: 'marketing',
+        project: 'demo-project',
+        tags: ['demo', 'marketing'],
+        content: 'This is a demo document for the marketing search tool...',
+        createdAt: new Date().toISOString()
+      });
+    }
+    
+    // Document preview endpoint
+    if (url.match(/\/api\/documents\/preview\/[^/]+$/) && method === 'GET') {
+      return res.json({
+        content: 'This is a demo document preview. In a real implementation, this would show the actual document content extracted from the uploaded file. The marketing search tool uses AI to analyze and categorize documents automatically.',
+        title: 'Demo Document Preview'
+      });
+    }
+    
     // Default response
-    res.status(404).json({ error: 'Endpoint not found' });
+    console.log('Unhandled endpoint:', url, method);
+    res.status(404).json({ error: 'Endpoint not found', url, method });
     
   } catch (error) {
     console.error('API Error:', error);
