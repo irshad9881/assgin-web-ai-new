@@ -1,5 +1,31 @@
 // Vercel serverless function entry point
 require('dotenv').config();
+const mongoose = require('mongoose');
+const multer = require('multer');
+const { processDocument } = require('../backend/src/services/documentProcessor');
+const { searchDocuments, categorizeDocument } = require('../backend/src/services/aiService');
+const Document = require('../backend/src/models/Document');
+
+// Configure multer for memory storage
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+});
+
+// Connect to MongoDB
+let isConnected = false;
+const connectDB = async () => {
+  if (isConnected) return;
+  
+  try {
+    await mongoose.connect(process.env.MONGODB_URI);
+    isConnected = true;
+    console.log('MongoDB connected');
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+    throw error;
+  }
+};
 
 module.exports = async (req, res) => {
   // Enable CORS
@@ -15,78 +41,126 @@ module.exports = async (req, res) => {
   const { url, method } = req;
   
   try {
+    await connectDB();
+    
     // Health check
     if (url === '/api/health') {
       return res.json({ status: 'OK', timestamp: new Date().toISOString() });
     }
     
-    // Categories endpoint
+    // Categories endpoint - get from database
     if (url === '/api/documents/meta/categories') {
+      const categories = await Document.distinct('category');
+      const teams = await Document.distinct('team');
+      const projects = await Document.distinct('project');
+      
       return res.json({
-        categories: ['campaign', 'brand', 'social-media', 'email', 'content', 'analytics', 'strategy', 'creative'],
-        teams: ['marketing', 'creative', 'content', 'analytics', 'social'],
-        projects: ['brand-refresh', 'q1-campaign', 'product-launch', 'holiday-promo']
+        categories: categories.length ? categories : ['campaign', 'brand', 'social-media', 'email', 'content', 'analytics', 'strategy', 'creative'],
+        teams: teams.length ? teams : ['marketing', 'creative', 'content', 'analytics', 'social'],
+        projects: projects.length ? projects : ['brand-refresh', 'q1-campaign', 'product-launch', 'holiday-promo']
       });
     }
     
     // Upload endpoint
     if (url === '/api/documents/upload' && method === 'POST') {
-      return res.json({
-        success: true,
-        document: {
-          id: 'doc-' + Date.now(),
-          title: 'Uploaded Document',
-          category: 'campaign',
-          team: 'marketing',
-          project: 'demo-project',
-          tags: ['uploaded', 'demo'],
-          createdAt: new Date().toISOString()
-        }
+      return new Promise((resolve) => {
+        upload.single('file')(req, res, async (err) => {
+          if (err) {
+            return res.status(400).json({ error: 'File upload error', message: err.message });
+          }
+          
+          try {
+            const { team, project, category } = req.body;
+            const file = req.file;
+            
+            if (!file) {
+              return res.status(400).json({ error: 'No file uploaded' });
+            }
+            
+            // Process document
+            const content = await processDocument(file);
+            
+            // AI categorization
+            const aiCategory = category || await categorizeDocument(content, file.originalname);
+            
+            // Create document
+            const document = new Document({
+              title: file.originalname,
+              content,
+              category: aiCategory,
+              team: team || 'marketing',
+              project: project || 'general',
+              tags: [],
+              filePath: `/uploads/${file.filename}`,
+              fileSize: file.size,
+              mimeType: file.mimetype
+            });
+            
+            await document.save();
+            
+            res.json({
+              success: true,
+              document: {
+                id: document._id,
+                title: document.title,
+                category: document.category,
+                team: document.team,
+                project: document.project,
+                tags: document.tags,
+                createdAt: document.createdAt
+              }
+            });
+            resolve();
+          } catch (error) {
+            console.error('Upload error:', error);
+            res.status(500).json({ error: 'Upload failed', message: error.message });
+            resolve();
+          }
+        });
       });
     }
     
     // Search endpoint
     if (url.startsWith('/api/documents/search')) {
-      return res.json({
-        query: 'demo search',
-        results: [
-          {
-            id: 'demo-1',
-            title: 'Marketing Strategy.pdf',
-            category: 'campaign',
-            team: 'marketing',
-            project: 'brand-refresh',
-            tags: ['strategy', 'marketing'],
-            similarity: 0.95,
-            matchType: 'semantic',
-            preview: 'Marketing strategy document...',
-            createdAt: new Date().toISOString()
-          }
-        ],
-        total: 1
+      const query = new URL(url, 'http://localhost').searchParams.get('query') || '';
+      const category = new URL(url, 'http://localhost').searchParams.get('category');
+      const team = new URL(url, 'http://localhost').searchParams.get('team');
+      const project = new URL(url, 'http://localhost').searchParams.get('project');
+      
+      const results = await searchDocuments({
+        query,
+        category,
+        team,
+        project
       });
+      
+      return res.json(results);
     }
     
     // Document details endpoint
     if (url.match(/\/api\/documents\/[^/]+$/) && method === 'GET') {
       const docId = url.split('/').pop();
-      return res.json({
-        id: docId,
-        title: 'Demo Document.pdf',
-        category: 'campaign',
-        team: 'marketing',
-        project: 'demo-project',
-        tags: ['demo', 'marketing'],
-        content: 'This is a demo document for the marketing search tool...',
-        createdAt: new Date().toISOString()
-      });
+      const document = await Document.findById(docId);
+      
+      if (!document) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+      
+      return res.json(document);
     }
     
     // Document preview endpoint
     if (url.match(/\/api\/documents\/preview\/[^/]+$/) && method === 'GET') {
+      const docId = url.split('/').pop();
+      const document = await Document.findById(docId);
+      
+      if (!document) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+      
       return res.json({
-        content: 'This is a demo document preview. In a real implementation, this would show the actual document content extracted from the uploaded file. The marketing search tool uses AI to analyze and categorize documents automatically.',
-        title: 'Demo Document Preview'
+        content: document.content || 'No content available',
+        title: document.title
       });
     }
     
